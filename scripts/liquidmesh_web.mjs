@@ -25,7 +25,7 @@ const STATUS_RULES = [
   { state: "green", title: "流畅", color: "#10b981", minRate: 0.55 },
   { state: "yellow", title: "可刷", color: "#f59e0b", minRate: 0.35 },
   { state: "orange", title: "卡顿", color: "#f97316", minRate: 0.15 },
-  { state: "red", title: "卡飞了", color: "#f43f5e", minRate: 0 },
+  { state: "red", title: "熔断", color: "#f43f5e", minRate: 0 },
 ];
 const ANOMALY_STATUS = { state: "anomaly", title: "探针异常", color: "#9ca3af" };
 const DIRECTIONS = ["USDT->quq", "quq->USDT"];
@@ -188,14 +188,14 @@ function calcWindow(samples, referenceTs, windowMs) {
   }
   const directionRates = DIRECTIONS.map((direction) => byDirection[direction].rate)
     .filter((rate) => rate != null);
-  const balancedRate = directionRates.length === DIRECTIONS.length
-    ? directionRates.reduce((sum, rate) => sum + rate, 0) / directionRates.length
+  const bottleneckRate = directionRates.length === DIRECTIONS.length
+    ? Math.min(...directionRates)
     : null;
   return {
     count,
     passCount,
     rawRate: count ? passCount / count : null,
-    rate: balancedRate,
+    rate: bottleneckRate,
     byDirection,
   };
 }
