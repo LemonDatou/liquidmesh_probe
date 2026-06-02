@@ -22,9 +22,10 @@ const STATUS_RULES = [
   { state: "green", title: "流畅", color: "#10b981", minRate: 0.55 },
   { state: "yellow", title: "可刷", color: "#f59e0b", minRate: 0.35 },
   { state: "orange", title: "卡顿", color: "#f97316", minRate: 0.15 },
-  { state: "red", title: "熔断", color: "#f43f5e", minRate: 0 },
+  { state: "red", title: "卡飞了", color: "#f43f5e", minRate: 0 },
 ];
 const ANOMALY_STATUS = { state: "anomaly", title: "探针异常", color: "#9ca3af" };
+const FUSE_STATUS = { state: "fuse", title: "熔断", color: "#f43f5e" };
 const DIRECTIONS = ["USDT->quq", "quq->USDT"];
 const MAX_WINDOW_MS = Math.max(...WINDOWS.map((window) => window.ms));
 const HISTORY_LOOKBACK_MS = MAX_WINDOW_MS * (HISTORY_POINTS + 1);
@@ -303,6 +304,7 @@ function slimHistory(history) {
 
 function classify(rate, count) {
   if (!count || rate == null) return ANOMALY_STATUS;
+  if (rate === 0) return FUSE_STATUS;
   return STATUS_RULES.find((rule) => rule.exclusive ? rate > rule.minRate : rate >= rule.minRate) || ANOMALY_STATUS;
 }
 
@@ -410,6 +412,7 @@ function buildPayload() {
     totalSamples: samples.length,
     statusRules: STATUS_RULES,
     anomalyStatus: ANOMALY_STATUS,
+    fuseStatus: FUSE_STATUS,
     status,
     brushEstimate,
     windows,
@@ -529,12 +532,14 @@ const fmtAxisDate = (ts) => new Date(ts).toLocaleString('zh-CN', { month: '2-dig
 const fmtShortTime = (ts) => new Date(ts).toLocaleString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
 let statusRules = [];
 let anomalyStatus = { state: 'anomaly', title: '无数据', color: '#e5e7eb' };
+let fuseStatus = { state: 'fuse', title: '熔断', color: '#f43f5e' };
 function estimateHtml(estimate, color) {
   if (!estimate?.ok) return '刷16次预估：-';
   return '刷16次预估：<strong style="color:' + color + '">' + estimate.elapsedMinutes + '分钟</strong>';
 }
 function classifyClient(rate, count) {
   if (!count || rate == null) return anomalyStatus;
+  if (rate === 0) return fuseStatus;
   return statusRules.find((rule) => rule.exclusive ? rate > rule.minRate : rate >= rule.minRate) || anomalyStatus;
 }
 function statusRank(status) {
@@ -570,7 +575,8 @@ function subText(key, item) {
       const suffix = stats.passCount ? '平均要刷' + Math.ceil(stats.count / stats.passCount) + '次通过' : '该方向一次都没成功';
       return '<div class="subLine">' + direction + ' ' + stats.passCount + '/' + stats.count + ' ' + suffix + '</div>';
     }
-    return '<div class="subLine">' + direction + ' 平均' + fmtPct(stats.rate) + '</div>';
+    const suffix = stats.rate ? '平均要刷' + Math.ceil(1 / stats.rate) + '次通过' : '该方向一次都没成功';
+    return '<div class="subLine">' + direction + ' 平均' + fmtPct(stats.rate) + ' ' + suffix + '</div>';
   }).join('');
 }
 function metricCard(key, item, points) {
@@ -675,6 +681,7 @@ async function load() {
   const data = await res.json();
   statusRules = data.statusRules || [];
   anomalyStatus = data.anomalyStatus || anomalyStatus;
+  fuseStatus = data.fuseStatus || fuseStatus;
   document.getElementById('statusText').textContent = data.status.title;
   document.getElementById('statusDot').style.background = data.status.color;
   document.getElementById('updatedText').textContent = fmtMinute(data.windows.p1m.referenceTs);

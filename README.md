@@ -154,7 +154,8 @@ Status thresholds:
 >=55%  smooth
 >=35%  brushable
 >=15%  congested
-< 15%  fuse triggered
+>0% and <15%  severely congested
+0%  fuse triggered
 ```
 
 ## Time Estimate
