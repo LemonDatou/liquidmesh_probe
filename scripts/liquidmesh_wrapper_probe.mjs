@@ -473,7 +473,7 @@ async function main() {
   const targetInnerBytes = Number(getArg("target-inner", "1380"));
   const slippageBps = Number(getArg("slippage-bps", "1"));
   const dexes = getArg("dexes", "");
-  const excludeDexes = getArg("exclude-dexes", "uniswap_v4,pancakeswap_v4");
+  const excludeDexes = getArg("exclude-dexes", "uniswap_v4,pancakeswap_v4,lista_stable,fluid_t1,nomiswap_stable");
   const maxHops = getArg("max-hops", "");
   const maxSwaps = getArg("max-swaps", "");
   let lastForwardMinOutputAmount = null;
