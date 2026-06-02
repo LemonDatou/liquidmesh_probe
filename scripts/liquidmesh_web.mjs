@@ -111,6 +111,10 @@ function readNewSamples(file) {
   }
 }
 
+function appendSamples(target, source) {
+  for (const sample of source) target.push(sample);
+}
+
 function bootstrapSamples(sampleDir) {
   const files = recentSampleFiles(sampleDir);
   const latestFile = files[files.length - 1] || null;
@@ -123,7 +127,7 @@ function bootstrapSamples(sampleDir) {
 
   const samples = [];
   for (const file of files) {
-    samples.push(...readWholeSampleFile(file, cutoffTs));
+    appendSamples(samples, readWholeSampleFile(file, cutoffTs));
     sampleOffsets.set(file, statSync(file).size);
   }
 
@@ -142,7 +146,7 @@ function updateSamplesFromDisk(sampleDir) {
     .filter((name) => /^\d{4}-\d{2}-\d{2}\.jsonl$/.test(name))
     .sort();
   for (const name of files.slice(-4)) {
-    inMemorySamples.push(...readNewSamples(join(sampleDir, name)));
+    appendSamples(inMemorySamples, readNewSamples(join(sampleDir, name)));
   }
 
   inMemorySamples.sort((a, b) => a.ts - b.ts);
