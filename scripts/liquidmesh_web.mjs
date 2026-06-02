@@ -576,7 +576,7 @@ function subText(key, item) {
       return '<div class="subLine">' + direction + ' ' + stats.passCount + '/' + stats.count + ' ' + suffix + '</div>';
     }
     const suffix = stats.rate ? '平均要刷' + Math.ceil(1 / stats.rate) + '次通过' : '该方向一次都没成功';
-    return '<div class="subLine">' + direction + ' 平均' + fmtPct(stats.rate) + ' ' + suffix + '</div>';
+    return '<div class="subLine">' + direction + ' ' + fmtPct(stats.rate) + ' ' + suffix + '</div>';
   }).join('');
 }
 function metricCard(key, item, points) {
