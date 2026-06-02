@@ -14,10 +14,7 @@ const UPDATE_INTERVAL_MS = 60_000;
 const HISTORY_POINTS = 60;
 const WINDOWS = [
   { key: "p1m", label: "1分钟", ms: 60_000 },
-  { key: "p3m", label: "3分钟", ms: 180_000 },
   { key: "p5m", label: "5分钟", ms: 300_000 },
-  { key: "p10m", label: "10分钟", ms: 600_000 },
-  { key: "p30m", label: "30分钟", ms: 1_800_000 },
   { key: "p1h", label: "1小时", ms: 3_600_000 },
 ];
 const STATUS_RULES = [
@@ -166,22 +163,13 @@ function parsePass(sample) {
   return null;
 }
 
-function calcWindow(samples, referenceTs, windowMs) {
-  const start = referenceTs - windowMs;
-  let count = 0;
-  let passCount = 0;
-  const byDirection = Object.fromEntries(
+function emptyDirectionStats() {
+  return Object.fromEntries(
     DIRECTIONS.map((direction) => [direction, { count: 0, passCount: 0, rate: null }]),
   );
-  for (const sample of samples) {
-    if (sample.ts < start || sample.ts > referenceTs) continue;
-    count += 1;
-    if (sample.pass) passCount += 1;
-    if (byDirection[sample.direction]) {
-      byDirection[sample.direction].count += 1;
-      if (sample.pass) byDirection[sample.direction].passCount += 1;
-    }
-  }
+}
+
+function finalizeStats({ count, passCount, byDirection }) {
   for (const direction of Object.keys(byDirection)) {
     const item = byDirection[direction];
     item.rate = item.count ? item.passCount / item.count : null;
@@ -204,26 +192,96 @@ function alignTs(ts, windowMs) {
   return Math.floor(ts / windowMs) * windowMs;
 }
 
-function windowStats(samples, referenceTs) {
+function buildMinuteStats(samples) {
+  const result = new Map();
+  for (const sample of samples) {
+    const ts = Math.ceil(sample.ts / 60_000) * 60_000;
+    if (!result.has(ts)) {
+      result.set(ts, { count: 0, passCount: 0, byDirection: emptyDirectionStats() });
+    }
+    const item = result.get(ts);
+    item.count += 1;
+    if (sample.pass) item.passCount += 1;
+    if (item.byDirection[sample.direction]) {
+      item.byDirection[sample.direction].count += 1;
+      if (sample.pass) item.byDirection[sample.direction].passCount += 1;
+    }
+  }
+  return new Map([...result.entries()].map(([ts, item]) => [ts, finalizeStats(item)]));
+}
+
+function emptyWindowStats() {
+  return finalizeStats({ count: 0, passCount: 0, byDirection: emptyDirectionStats() });
+}
+
+function minuteWindow(minuteStats, referenceTs) {
+  return minuteStats.get(referenceTs) || emptyWindowStats();
+}
+
+function averageDirectionRates(blocks) {
+  const byDirection = emptyDirectionStats();
+  let count = 0;
+  let passCount = 0;
+  for (const block of blocks) {
+    count += block.count;
+    passCount += block.passCount;
+  }
+  for (const direction of DIRECTIONS) {
+    const rates = blocks
+      .map((block) => block.byDirection[direction]?.rate)
+      .filter((rate) => rate != null);
+    byDirection[direction] = {
+      count: rates.length,
+      passCount: 0,
+      rate: rates.length ? rates.reduce((sum, rate) => sum + rate, 0) / rates.length : null,
+    };
+  }
+  const directionRates = DIRECTIONS.map((direction) => byDirection[direction].rate)
+    .filter((rate) => rate != null);
+  return {
+    count,
+    passCount,
+    rawRate: count ? passCount / count : null,
+    rate: directionRates.length === DIRECTIONS.length ? Math.min(...directionRates) : null,
+    byDirection,
+  };
+}
+
+function layeredWindow(minuteStats, key, referenceTs) {
+  if (key === "p1m") return minuteWindow(minuteStats, referenceTs);
+  if (key === "p5m") {
+    return averageDirectionRates(Array.from({ length: 5 }, (_, index) =>
+      layeredWindow(minuteStats, "p1m", referenceTs - (4 - index) * 60_000),
+    ));
+  }
+  if (key === "p1h") {
+    return averageDirectionRates(Array.from({ length: 12 }, (_, index) =>
+      layeredWindow(minuteStats, "p5m", referenceTs - (11 - index) * 300_000),
+    ));
+  }
+  return emptyWindowStats();
+}
+
+function windowStats(minuteStats, referenceTs) {
   const alignedReference = alignTs(referenceTs, 60_000);
   const result = {};
   for (const window of WINDOWS) {
     result[window.key] = {
       label: window.label,
       referenceTs: alignedReference,
-      ...calcWindow(samples, alignedReference, window.ms),
+      ...layeredWindow(minuteStats, window.key, alignedReference),
     };
   }
   return result;
 }
 
-function historyByWindow(samples, referenceTs) {
+function historyByWindow(minuteStats, referenceTs) {
   const result = {};
   for (const window of WINDOWS) {
     const alignedReference = alignTs(referenceTs, window.ms);
     result[window.key] = Array.from({ length: HISTORY_POINTS }, (_, index) => {
       const ts = alignedReference - (HISTORY_POINTS - 1 - index) * window.ms;
-      return { ts, ...calcWindow(samples, ts, window.ms) };
+      return { ts, ...layeredWindow(minuteStats, window.key, ts) };
     });
   }
   return result;
@@ -339,9 +397,10 @@ function buildPayload() {
   updateSamplesFromDisk(SAMPLE_DIR);
   const referenceTs = Date.now();
   const samples = inMemorySamples;
-  const windows = windowStats(samples, referenceTs);
-  const history = slimHistory(historyByWindow(samples, referenceTs));
-  const status = classify(windows.p3m.rate, windows.p3m.count);
+  const minuteStats = buildMinuteStats(samples);
+  const windows = windowStats(minuteStats, referenceTs);
+  const history = slimHistory(historyByWindow(minuteStats, referenceTs));
+  const status = classify(windows.p5m.rate, windows.p5m.count);
   const brushEstimate = estimateBrushTime(samples);
   return {
     generatedAt: Date.now(),
@@ -458,9 +517,9 @@ const html = String.raw`<!doctype html>
 </main>
 <div class="trendTip" id="trendTip"></div>
 <script>
-const windows = ['p1m', 'p3m', 'p5m', 'p10m', 'p30m', 'p1h'];
+const windows = ['p1m', 'p5m', 'p1h'];
 const directions = ['USDT->quq', 'quq->USDT'];
-const windowNames = { p1m: '1 MIN', p3m: '3 MIN', p5m: '5 MIN', p10m: '10 MIN', p30m: '30 MIN', p1h: '1 HOUR' };
+const windowNames = { p1m: '1 MIN', p5m: '5 MIN', p1h: '1 HOUR' };
 const fmtPct = (rate) => rate == null ? '-' : Math.round(rate * 100) + '%';
 const fmtTime = (ts) => new Date(ts).toLocaleString('zh-CN', { hour12: false });
 const fmtMinute = (ts) => new Date(ts).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
@@ -499,7 +558,7 @@ function directionStatus(item) {
 }
 function historyBlock(key, points) {
   const bars = points.map((point) => {
-    const title = fmtTime(point.ts) + ' ' + (point.count ? Math.round(point.rate * 100) + '% ' + point.passCount + '/' + point.count + ' 通过' : '无数据');
+    const title = fmtTime(point.ts) + ' ' + (point.count ? Math.round(point.rate * 100) + '%' : '无数据');
     return '<div class="bar" title="' + title + '" style="background:' + classifyClient(point.rate, point.count).color + '"></div>';
   }).join('');
   return '<div class="historyTitle">' + windowNames[key] + ' HISTORY</div><div class="bars">' + bars + '</div><div class="axis"><span>PAST</span><span>NOW</span></div>';
@@ -507,8 +566,11 @@ function historyBlock(key, points) {
 function subText(key, item) {
   return directions.map((direction) => {
     const stats = item.byDirection?.[direction] || { count: 0, passCount: 0 };
-    const suffix = stats.passCount ? '平均要刷' + Math.ceil(stats.count / stats.passCount) + '次通过' : '该方向一次都没成功';
-    return '<div class="subLine">' + direction + ' ' + stats.passCount + '/' + stats.count + ' ' + suffix + '</div>';
+    if (key === 'p1m') {
+      const suffix = stats.passCount ? '平均要刷' + Math.ceil(stats.count / stats.passCount) + '次通过' : '该方向一次都没成功';
+      return '<div class="subLine">' + direction + ' ' + stats.passCount + '/' + stats.count + ' ' + suffix + '</div>';
+    }
+    return '<div class="subLine">' + direction + ' 平均' + fmtPct(stats.rate) + '</div>';
   }).join('');
 }
 function metricCard(key, item, points) {

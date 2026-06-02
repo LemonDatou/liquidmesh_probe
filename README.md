@@ -132,15 +132,17 @@ The dashboard uses `ok` as the main pass/fail signal and keeps raw fields for la
 
 ## Dashboard Metrics
 
-The dashboard shows six rolling windows:
+The dashboard currently shows three windows:
 
 ```text
-1m, 3m, 5m, 10m, 30m, 1h
+1m, 5m, 1h
 ```
 
 For each window:
 
-- Overall percentage is the equal-weight average of both directions.
+- The 1m window is calculated directly from per-sample probe data in the current minute.
+- Longer windows average the previous window level by direction first, then take the weaker direction.
+- Overall percentage is the bottleneck rate of the two directions.
 - Direction details are shown separately.
 - If the weaker direction is below the brushable tier, the card title includes that direction.
 - Heatmaps use the same pass-rate definition as the corresponding window.
@@ -152,7 +154,7 @@ Status thresholds:
 >=55%  smooth
 >=35%  brushable
 >=15%  congested
-< 15%  severely congested
+< 15%  fuse triggered
 ```
 
 ## Time Estimate
