@@ -19,9 +19,9 @@ const WINDOWS = [
 ];
 const STATUS_RULES = [
   { state: "super-green", title: "超级流畅", color: "#10b981", minRate: 0.70, exclusive: true },
-  { state: "green", title: "流畅", color: "#10b981", minRate: 0.60 },
+  { state: "green", title: "流畅", color: "#10b981", minRate: 0.55 },
   { state: "yellow", title: "可刷", color: "#f59e0b", minRate: 0.40 },
-  { state: "orange", title: "卡顿", color: "#f97316", minRate: 0.15 },
+  { state: "orange", title: "卡顿", color: "#f97316", minRate: 0.20 },
   { state: "red", title: "卡飞了", color: "#f43f5e", minRate: 0 },
 ];
 const ANOMALY_STATUS = { state: "anomaly", title: "探针异常", color: "#9ca3af" };
