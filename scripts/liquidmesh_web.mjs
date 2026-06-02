@@ -18,9 +18,9 @@ const WINDOWS = [
   { key: "p1h", label: "1小时", ms: 3_600_000 },
 ];
 const STATUS_RULES = [
-  { state: "super-green", title: "超级流畅", color: "#10b981", minRate: 0.75, exclusive: true },
-  { state: "green", title: "流畅", color: "#10b981", minRate: 0.55 },
-  { state: "yellow", title: "可刷", color: "#f59e0b", minRate: 0.35 },
+  { state: "super-green", title: "超级流畅", color: "#10b981", minRate: 0.70, exclusive: true },
+  { state: "green", title: "流畅", color: "#10b981", minRate: 0.60 },
+  { state: "yellow", title: "可刷", color: "#f59e0b", minRate: 0.40 },
   { state: "orange", title: "卡顿", color: "#f97316", minRate: 0.15 },
   { state: "red", title: "卡飞了", color: "#f43f5e", minRate: 0 },
 ];
