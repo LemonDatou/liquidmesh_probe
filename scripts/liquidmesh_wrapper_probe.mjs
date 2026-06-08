@@ -106,6 +106,13 @@ function getBoolArg(name, fallback) {
   return ["1", "true", "yes", "y"].includes(String(value).toLowerCase());
 }
 
+function parseNumberList(value) {
+  return String(value)
+    .split(",")
+    .map((item) => Number(item.trim()))
+    .filter((item) => Number.isFinite(item));
+}
+
 function shortText(text) {
   return String(text || "").replace(/\s+/g, " ").trim().slice(0, 240);
 }
@@ -410,9 +417,8 @@ async function runSample({
   const innerBytes = extractInnerBytes(swap);
   const route = routeSummary(quote);
   const ok = (
-    route === "uniswap_v3" &&
-    innerBytes === targetInnerBytes &&
-    liquidMeshEstimatedGasLimit === threshold
+    route === "uniswap_v4" &&
+    targetInnerBytes.includes(innerBytes)
   );
   const swapError = swap.error || (swap.status === 200 && swap.json?.code === 0
     ? null
@@ -421,7 +427,7 @@ async function runSample({
     ts: startedAt,
     iso: new Date(startedAt).toISOString(),
     ok,
-    passReason: ok ? "single-uniswap-v3-inner-and-lmGas-match" : "route-inner-or-lmGas-not-target",
+    passReason: ok ? "single-uniswap-v4-inner-match" : "route-or-inner-not-target",
     threshold,
     targetInnerBytes,
     fixedGasLimit: FIXED_GAS_LIMIT,
@@ -470,10 +476,11 @@ async function main() {
   const format = getArg("format", "compact");
   const stdoutMode = getArg("stdout", samples === 0 ? "summary" : "sample");
   const threshold = Number(getArg("threshold", "155000"));
-  const targetInnerBytes = Number(getArg("target-inner", "1380"));
+  const targetInnerBytes = parseNumberList(getArg("target-inner", "1540,2052"));
+  if (targetInnerBytes.length === 0) throw new Error("Missing target inner bytes. Pass --target-inner 1540,2052.");
   const slippageBps = Number(getArg("slippage-bps", "1"));
   const dexes = getArg("dexes", "");
-  const excludeDexes = getArg("exclude-dexes", "uniswap_v4,pancakeswap_v4,lista_stable,fluid_t1,nomiswap_stable");
+  const excludeDexes = getArg("exclude-dexes", "");
   const maxHops = getArg("max-hops", "");
   const maxSwaps = getArg("max-swaps", "");
   let lastForwardMinOutputAmount = null;
