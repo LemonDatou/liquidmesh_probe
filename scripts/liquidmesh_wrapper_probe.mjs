@@ -106,13 +106,6 @@ function getBoolArg(name, fallback) {
   return ["1", "true", "yes", "y"].includes(String(value).toLowerCase());
 }
 
-function parseNumberList(value) {
-  return String(value)
-    .split(",")
-    .map((item) => Number(item.trim()))
-    .filter((item) => Number.isFinite(item));
-}
-
 function shortText(text) {
   return String(text || "").replace(/\s+/g, " ").trim().slice(0, 240);
 }
@@ -418,7 +411,7 @@ async function runSample({
   const route = routeSummary(quote);
   const ok = (
     route === "uniswap_v4" &&
-    targetInnerBytes.includes(innerBytes)
+    innerBytes === targetInnerBytes
   );
   const swapError = swap.error || (swap.status === 200 && swap.json?.code === 0
     ? null
@@ -476,8 +469,8 @@ async function main() {
   const format = getArg("format", "compact");
   const stdoutMode = getArg("stdout", samples === 0 ? "summary" : "sample");
   const threshold = Number(getArg("threshold", "155000"));
-  const targetInnerBytes = parseNumberList(getArg("target-inner", "1540,2052"));
-  if (targetInnerBytes.length === 0) throw new Error("Missing target inner bytes. Pass --target-inner 1540,2052.");
+  const targetInnerBytes = Number(getArg("target-inner", "1540"));
+  if (!Number.isFinite(targetInnerBytes)) throw new Error("Missing target inner bytes. Pass --target-inner 1540.");
   const slippageBps = Number(getArg("slippage-bps", "1"));
   const dexes = getArg("dexes", "");
   const excludeDexes = getArg("exclude-dexes", "");
