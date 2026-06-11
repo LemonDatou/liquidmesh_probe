@@ -20,7 +20,7 @@ const WINDOWS = [
 const STATUS_RULES = [
   { state: "super-green", title: "超级流畅", color: "#10b981", minRate: 0.70, exclusive: true },
   { state: "green", title: "流畅", color: "#10b981", minRate: 0.50 },
-  { state: "yellow", title: "可刷", color: "#3B82F6", minRate: 0.333 },
+  { state: "yellow", title: "可刷", color: "#B7791F", barColor: "#FEF3C6", minRate: 0.333 },
   { state: "orange", title: "卡顿", color: "#f97316", minRate: 0.20 },
   { state: "red", title: "卡飞了", color: "#f43f5e", minRate: 0 },
 ];
@@ -458,7 +458,7 @@ const html = String.raw`<!doctype html>
       --line: #e5e7eb;
       --panel: #ffffff;
       --green: #10b981;
-      --yellow: #3B82F6;
+      --yellow: #FEF3C6;
       --orange: #f97316;
       --red: #f43f5e;
       --empty: #e5e7eb;
@@ -568,7 +568,8 @@ function directionStatus(item) {
 function historyBlock(key, points) {
   const bars = points.map((point) => {
     const title = fmtTime(point.ts) + ' ' + (point.count ? Math.round(point.rate * 100) + '%' : '无数据');
-    return '<div class="bar" title="' + title + '" style="background:' + classifyClient(point.rate, point.count).color + '"></div>';
+    const status = classifyClient(point.rate, point.count);
+    return '<div class="bar" title="' + title + '" style="background:' + (status.barColor || status.color) + '"></div>';
   }).join('');
   return '<div class="historyTitle">' + windowNames[key] + ' HISTORY</div><div class="bars">' + bars + '</div><div class="axis"><span>PAST</span><span>NOW</span></div>';
 }
@@ -612,7 +613,7 @@ function hourlyTrend(points) {
   }
   const circles = pathPoints.filter(Boolean).map((item) => {
     const status = classifyClient(item.point.rate, item.point.count);
-    return '<circle cx="' + item.x.toFixed(1) + '" cy="' + item.y.toFixed(1) + '" r="2.8" fill="' + status.color + '"></circle>';
+    return '<circle cx="' + item.x.toFixed(1) + '" cy="' + item.y.toFixed(1) + '" r="2.8" fill="' + (status.barColor || status.color) + '"></circle>';
   }).join('');
   const hitPoints = points.map((point, index) => {
     if (!point.count || point.rate == null) return '';
