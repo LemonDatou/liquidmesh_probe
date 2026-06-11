@@ -576,10 +576,10 @@ function subText(key, item) {
   return directions.map((direction) => {
     const stats = item.byDirection?.[direction] || { count: 0, passCount: 0 };
     if (key === 'p1m') {
-      const suffix = stats.passCount ? '平均要刷' + Math.ceil(stats.count / stats.passCount) + '次通过' : '该方向一次都没成功';
+      const suffix = stats.passCount ? '平均要刷' + (stats.count / stats.passCount).toFixed(1) + '次通过' : '该方向一次都没成功';
       return '<div class="subLine">' + direction + ' ' + stats.passCount + '/' + stats.count + ' ' + suffix + '</div>';
     }
-    const suffix = stats.rate ? '平均要刷' + Math.ceil(1 / stats.rate) + '次通过' : '该方向一次都没成功';
+    const suffix = stats.rate ? '平均要刷' + (1 / stats.rate).toFixed(1) + '次通过' : '该方向一次都没成功';
     return '<div class="subLine">' + direction + ' ' + fmtPct(stats.rate) + ' ' + suffix + '</div>';
   }).join('');
 }
