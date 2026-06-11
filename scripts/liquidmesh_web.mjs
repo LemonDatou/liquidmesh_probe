@@ -20,7 +20,7 @@ const WINDOWS = [
 const STATUS_RULES = [
   { state: "super-green", title: "超级流畅", color: "#10b981", minRate: 0.70, exclusive: true },
   { state: "green", title: "流畅", color: "#10b981", minRate: 0.50 },
-  { state: "yellow", title: "可刷", color: "#f59e0b", minRate: 0.333 },
+  { state: "yellow", title: "可刷", color: "#3B82F6", minRate: 0.333 },
   { state: "orange", title: "卡顿", color: "#f97316", minRate: 0.20 },
   { state: "red", title: "卡飞了", color: "#f43f5e", minRate: 0 },
 ];
@@ -458,7 +458,7 @@ const html = String.raw`<!doctype html>
       --line: #e5e7eb;
       --panel: #ffffff;
       --green: #10b981;
-      --yellow: #f59e0b;
+      --yellow: #3B82F6;
       --orange: #f97316;
       --red: #f43f5e;
       --empty: #e5e7eb;
