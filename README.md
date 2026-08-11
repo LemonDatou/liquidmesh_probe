@@ -110,9 +110,12 @@ GET /api/status
 Each sample is reduced to a boolean:
 
 ```text
-PASS  = route matches the lightweight target path
+PASS  = V4 is excluded and the quote uses one V3 dex, 1380-byte inner calldata,
+        and a 155000 LiquidMesh gas estimate
 BLOCK = route/gas/calldata does not match the target path or the request fails
 ```
+
+The accepted single-dex route names are `pancakeswap_v3` and `uniswap_v3`.
 
 The current sampler records the following useful fields:
 

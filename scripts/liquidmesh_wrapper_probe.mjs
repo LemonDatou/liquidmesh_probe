@@ -225,17 +225,17 @@ function minReceiveAmount(outputAmount, slippageBps) {
   return ((BigInt(outputAmount) * BigInt(10_000 - slippageBps)) / 10_000n).toString();
 }
 
-function routeSummary(payload) {
+function routeDexes(payload) {
   const data = quoteData(payload);
-  return [
-    ...new Set(
-      (data.routePlans || []).flatMap((route) =>
-        (route.subRouters || []).flatMap((sub) =>
-          (sub.dexes || []).map((dex) => dex.dex).filter(Boolean),
-        ),
-      ),
+  return (data.routePlans || []).flatMap((route) =>
+    (route.subRouters || []).flatMap((sub) =>
+      (sub.dexes || []).map((dex) => dex.dex).filter(Boolean),
     ),
-  ].join(",");
+  );
+}
+
+function routeSummary(payload) {
+  return [...new Set(routeDexes(payload))].join(",");
 }
 
 function extractInnerBytes(payload) {
@@ -408,10 +408,16 @@ async function runSample({
   const liquidMeshEstimatedGasLimit = extractEstimatedGasLimit(quote);
   const outputAmount = extractOutputAmount(quote);
   const innerBytes = extractInnerBytes(swap);
+  const routeDexList = routeDexes(quote);
   const route = routeSummary(quote);
+  const singleV3Route = (
+    routeDexList.length === 1 &&
+    ["pancakeswap_v3", "uniswap_v3"].includes(routeDexList[0])
+  );
   const ok = (
-    route === "uniswap_v4" &&
-    innerBytes === targetInnerBytes
+    singleV3Route &&
+    innerBytes === targetInnerBytes &&
+    liquidMeshEstimatedGasLimit === threshold
   );
   const swapError = swap.error || (swap.status === 200 && swap.json?.code === 0
     ? null
@@ -420,7 +426,7 @@ async function runSample({
     ts: startedAt,
     iso: new Date(startedAt).toISOString(),
     ok,
-    passReason: ok ? "single-uniswap-v4-inner-match" : "route-or-inner-not-target",
+    passReason: ok ? "single-v3-inner-and-lmGas-match" : "route-inner-or-lmGas-not-target",
     threshold,
     targetInnerBytes,
     fixedGasLimit: FIXED_GAS_LIMIT,
@@ -469,11 +475,11 @@ async function main() {
   const format = getArg("format", "compact");
   const stdoutMode = getArg("stdout", samples === 0 ? "summary" : "sample");
   const threshold = Number(getArg("threshold", "155000"));
-  const targetInnerBytes = Number(getArg("target-inner", "1540"));
-  if (!Number.isFinite(targetInnerBytes)) throw new Error("Missing target inner bytes. Pass --target-inner 1540.");
+  const targetInnerBytes = Number(getArg("target-inner", "1380"));
+  if (!Number.isFinite(targetInnerBytes)) throw new Error("Missing target inner bytes. Pass --target-inner 1380.");
   const slippageBps = Number(getArg("slippage-bps", "1"));
   const dexes = getArg("dexes", "");
-  const excludeDexes = getArg("exclude-dexes", "");
+  const excludeDexes = getArg("exclude-dexes", "uniswap_v4,pancakeswap_v4,lista_stable,fluid_t1,nomiswap_stable");
   const maxHops = getArg("max-hops", "");
   const maxSwaps = getArg("max-swaps", "");
   let lastForwardMinOutputAmount = null;
