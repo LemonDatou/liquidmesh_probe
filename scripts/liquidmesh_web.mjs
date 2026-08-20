@@ -301,6 +301,14 @@ function windowStats(minuteStats, tenSecondStats, referenceTs) {
   return result;
 }
 
+function tenSecondHistory(tenSecondStats, referenceTs) {
+  const alignedReference = alignTs(referenceTs, 10_000);
+  return Array.from({ length: HISTORY_POINTS }, (_, index) => {
+    const ts = alignedReference - (HISTORY_POINTS - 1 - index) * 10_000;
+    return { ts, ...(tenSecondStats.get(ts) || emptyWindowStats()) };
+  });
+}
+
 function historyByWindow(minuteStats, tenSecondStats, referenceTs) {
   const result = {};
   for (const window of WINDOWS) {
@@ -429,8 +437,35 @@ function buildPayload() {
   updateSamplesFromDisk(SAMPLE_DIR);
   const referenceTs = Date.now();
   const samples = inMemorySamples;
+  const tenSecondCutoff = referenceTs - 10_000 * (HISTORY_POINTS + 1);
+  const tenSecondSamples = samples.slice(upperBound(samples, tenSecondCutoff));
+  const tenSecondStats = buildTenSecondStats(tenSecondSamples);
+  const alignedTenSecondReference = alignTs(referenceTs, 10_000);
+  const tenSecondWindow = {
+    label: WINDOWS[0].label,
+    referenceTs: alignedTenSecondReference,
+    ...(tenSecondStats.get(alignedTenSecondReference) || emptyWindowStats()),
+  };
+  const fullRefresh = !cachedPayload
+    || alignTs(cachedPayload.referenceTs, 60_000) !== alignTs(referenceTs, 60_000);
+
+  if (!fullRefresh) {
+    return {
+      ...cachedPayload,
+      generatedAt: Date.now(),
+      nextUpdateAt,
+      referenceTs,
+      sampleFile,
+      totalSamples: samples.length,
+      windows: { ...cachedPayload.windows, p10s: tenSecondWindow },
+      history: {
+        ...cachedPayload.history,
+        p10s: slimHistory({ p10s: tenSecondHistory(tenSecondStats, referenceTs) }).p10s,
+      },
+    };
+  }
+
   const minuteStats = buildMinuteStats(samples);
-  const tenSecondStats = buildTenSecondStats(samples);
   const windows = windowStats(minuteStats, tenSecondStats, referenceTs);
   const history = slimHistory(historyByWindow(minuteStats, tenSecondStats, referenceTs));
   const status = classify(windows.p5m.rate, windows.p5m.count);

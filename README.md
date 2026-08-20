@@ -175,7 +175,8 @@ refresh interval: 1.5s
 sample lookup: nearest sample in the same direction
 ```
 
-The estimate is recomputed with the dashboard cache every 10 seconds.
+The 10-second window is recomputed every 10 seconds. Existing minute-based
+windows and the time estimate keep their original once-per-minute refresh.
 
 The browser fetches the cached dashboard payload every 10 seconds and stops
 automatic fetching after 20 minutes. Reload the page to begin another session.
