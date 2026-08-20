@@ -135,10 +135,10 @@ The dashboard uses `ok` as the main pass/fail signal and keeps raw fields for la
 
 ## Dashboard Metrics
 
-The dashboard currently shows three windows:
+The dashboard currently shows four windows:
 
 ```text
-1m, 5m, 1h
+10s, 1m, 5m, 1h
 ```
 
 For each window:
@@ -163,19 +163,22 @@ Status thresholds:
 
 ## Time Estimate
 
-The dashboard estimates the time required to complete 16 round trips.
+The dashboard estimates the time required to complete 4 round trips.
 
 Current assumptions:
 
 ```text
-target round trips: 16
-target swaps: 32
+target round trips: 4
+target swaps: 8
 direction switch time: 20s
 refresh interval: 1.5s
 sample lookup: nearest sample in the same direction
 ```
 
-The estimate is recomputed with the dashboard cache once per minute.
+The estimate is recomputed with the dashboard cache every 10 seconds.
+
+The browser fetches the cached dashboard payload every 10 seconds and stops
+automatic fetching after 20 minutes. Reload the page to begin another session.
 
 ## Data Retention
 

@@ -10,9 +10,10 @@ const ROOT_DIR = dirname(SCRIPT_DIR);
 const SAMPLE_DIR = join(ROOT_DIR, "data", "liquidmesh_probe", "samples");
 const DEFAULT_PORT = 19988;
 const DEFAULT_HOST = "0.0.0.0";
-const UPDATE_INTERVAL_MS = 60_000;
+const UPDATE_INTERVAL_MS = 10_000;
 const HISTORY_POINTS = 60;
 const WINDOWS = [
+  { key: "p10s", label: "10秒", ms: 10_000 },
   { key: "p1m", label: "1分钟", ms: 60_000 },
   { key: "p5m", label: "5分钟", ms: 300_000 },
   { key: "p1h", label: "1小时", ms: 3_600_000 },
@@ -29,7 +30,7 @@ const FUSE_STATUS = { state: "fuse", title: "熔断", color: "#f43f5e" };
 const DIRECTIONS = ["USDT->quq", "quq->USDT"];
 const MAX_WINDOW_MS = Math.max(...WINDOWS.map((window) => window.ms));
 const HISTORY_LOOKBACK_MS = MAX_WINDOW_MS * (HISTORY_POINTS + 1);
-const ESTIMATE_TARGET_ROUND_TRIPS = 16;
+const ESTIMATE_TARGET_ROUND_TRIPS = 4;
 const ESTIMATE_TARGET_SWAPS = ESTIMATE_TARGET_ROUND_TRIPS * 2;
 const ESTIMATE_SWITCH_MS = 20_000;
 const ESTIMATE_REFRESH_MS = 1_500;
@@ -215,6 +216,24 @@ function buildMinuteStats(samples) {
   return new Map([...result.entries()].map(([ts, item]) => [ts, finalizeStats(item)]));
 }
 
+function buildTenSecondStats(samples) {
+  const result = new Map();
+  for (const sample of samples) {
+    const ts = Math.ceil(sample.ts / 10_000) * 10_000;
+    if (!result.has(ts)) {
+      result.set(ts, { count: 0, passCount: 0, byDirection: emptyDirectionStats() });
+    }
+    const item = result.get(ts);
+    item.count += 1;
+    if (sample.pass) item.passCount += 1;
+    if (item.byDirection[sample.direction]) {
+      item.byDirection[sample.direction].count += 1;
+      if (sample.pass) item.byDirection[sample.direction].passCount += 1;
+    }
+  }
+  return new Map([...result.entries()].map(([ts, item]) => [ts, finalizeStats(item)]));
+}
+
 function emptyWindowStats() {
   return finalizeStats({ count: 0, passCount: 0, byDirection: emptyDirectionStats() });
 }
@@ -267,26 +286,33 @@ function layeredWindow(minuteStats, key, referenceTs) {
   return emptyWindowStats();
 }
 
-function windowStats(minuteStats, referenceTs) {
-  const alignedReference = alignTs(referenceTs, 60_000);
+function windowStats(minuteStats, tenSecondStats, referenceTs) {
   const result = {};
   for (const window of WINDOWS) {
+    const alignedReference = alignTs(referenceTs, window.key === "p10s" ? 10_000 : 60_000);
     result[window.key] = {
       label: window.label,
       referenceTs: alignedReference,
-      ...layeredWindow(minuteStats, window.key, alignedReference),
+      ...(window.key === "p10s"
+        ? tenSecondStats.get(alignedReference) || emptyWindowStats()
+        : layeredWindow(minuteStats, window.key, alignedReference)),
     };
   }
   return result;
 }
 
-function historyByWindow(minuteStats, referenceTs) {
+function historyByWindow(minuteStats, tenSecondStats, referenceTs) {
   const result = {};
   for (const window of WINDOWS) {
     const alignedReference = alignTs(referenceTs, window.ms);
     result[window.key] = Array.from({ length: HISTORY_POINTS }, (_, index) => {
       const ts = alignedReference - (HISTORY_POINTS - 1 - index) * window.ms;
-      return { ts, ...layeredWindow(minuteStats, window.key, ts) };
+      return {
+        ts,
+        ...(window.key === "p10s"
+          ? tenSecondStats.get(ts) || emptyWindowStats()
+          : layeredWindow(minuteStats, window.key, ts)),
+      };
     });
   }
   return result;
@@ -404,8 +430,9 @@ function buildPayload() {
   const referenceTs = Date.now();
   const samples = inMemorySamples;
   const minuteStats = buildMinuteStats(samples);
-  const windows = windowStats(minuteStats, referenceTs);
-  const history = slimHistory(historyByWindow(minuteStats, referenceTs));
+  const tenSecondStats = buildTenSecondStats(samples);
+  const windows = windowStats(minuteStats, tenSecondStats, referenceTs);
+  const history = slimHistory(historyByWindow(minuteStats, tenSecondStats, referenceTs));
   const status = classify(windows.p5m.rate, windows.p5m.count);
   const brushEstimate = estimateBrushTime(samples);
   return {
@@ -430,16 +457,16 @@ function refreshCache() {
   if (verboseLogs) console.log(`cache refreshed ${new Date(cachedPayload.generatedAt).toISOString()}`);
 }
 
-function msUntilNextMinute(offsetMs = 0) {
+function msUntilNextUpdate(offsetMs = 0) {
   const now = Date.now();
-  return Math.floor(now / 60_000) * 60_000 + 60_000 + offsetMs - now;
+  return Math.floor(now / UPDATE_INTERVAL_MS) * UPDATE_INTERVAL_MS + UPDATE_INTERVAL_MS + offsetMs - now;
 }
 
 function scheduleCacheRefresh() {
   setTimeout(() => {
     refreshCache();
     scheduleCacheRefresh();
-  }, Math.max(0, msUntilNextMinute()));
+  }, Math.max(0, msUntilNextUpdate()));
 }
 
 const html = String.raw`<!doctype html>
@@ -470,10 +497,10 @@ const html = String.raw`<!doctype html>
     h1 { margin: 0; font-size: 28px; line-height: 1.15; }
     .status { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 14px; margin-top: 8px; white-space: nowrap; }
     .dot { width: 12px; height: 12px; border-radius: 999px; background: var(--empty); }
-    .metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+    .metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
     .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
     .label { color: var(--muted); font-size: 13px; margin-bottom: 8px; }
-    .value { font-size: 32px; line-height: 1; font-variant-numeric: tabular-nums; }
+    .value { font-size: 30px; line-height: 1.08; font-variant-numeric: tabular-nums; white-space: nowrap; }
     .sub { color: var(--muted); font-size: 12px; margin-top: 8px; font-variant-numeric: tabular-nums; }
     .subLine { line-height: 1.45; }
     .historyTitle { color: var(--soft); font-size: 11px; font-weight: 700; letter-spacing: .12em; margin-top: 14px; text-transform: uppercase; }
@@ -490,9 +517,9 @@ const html = String.raw`<!doctype html>
     .trendTip strong { display: block; font-size: 13px; margin-bottom: 2px; }
     .hitPoint { cursor: crosshair; touch-action: none; pointer-events: all; }
     .trendHitArea { cursor: crosshair; touch-action: none; pointer-events: all; }
-    @media (max-width: 900px) {
+    @media (max-width: 760px) {
       main { padding: 16px; }
-      .metrics { grid-template-columns: repeat(2, 1fr); }
+      .metrics { grid-template-columns: 1fr; }
       .bar { height: 24px; }
       .trendSvg { height: 190px; }
     }
@@ -500,7 +527,7 @@ const html = String.raw`<!doctype html>
       main { padding: 14px 12px; }
       h1 { font-size: 22px; }
       .status { align-items: flex-start; flex-wrap: wrap; gap: 6px 10px; font-size: 13px; }
-      .metrics { grid-template-columns: 1fr; gap: 10px; }
+      .metrics { gap: 10px; }
       .card { padding: 12px; }
       .value { font-size: 30px; }
       .bars { gap: 1px; }
@@ -524,9 +551,9 @@ const html = String.raw`<!doctype html>
 </main>
 <div class="trendTip" id="trendTip"></div>
 <script>
-const windows = ['p1m', 'p5m', 'p1h'];
+const windows = ['p10s', 'p1m', 'p5m', 'p1h'];
 const directions = ['USDT->quq', 'quq->USDT'];
-const windowNames = { p1m: '1 MIN', p5m: '5 MIN', p1h: '1 HOUR' };
+const windowNames = { p10s: '10 SEC', p1m: '1 MIN', p5m: '5 MIN', p1h: '1 HOUR' };
 const fmtPct = (rate) => rate == null ? '-' : Math.round(rate * 100) + '%';
 const fmtTime = (ts) => new Date(ts).toLocaleString('zh-CN', { hour12: false });
 const fmtMinute = (ts) => new Date(ts).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
@@ -538,8 +565,8 @@ let statusRules = [];
 let anomalyStatus = { state: 'anomaly', title: '无数据', color: '#e5e7eb' };
 let fuseStatus = { state: 'fuse', title: '熔断', color: '#f43f5e' };
 function estimateHtml(estimate, color) {
-  if (!estimate?.ok) return '刷16次预估：-';
-  return '刷16次预估：<strong style="color:' + color + '">' + estimate.elapsedMinutes + '分钟</strong>';
+  if (!estimate?.ok) return '刷4次预估：-';
+  return '刷4次预估：<strong style="color:' + color + '">' + estimate.elapsedMinutes + '分钟</strong>';
 }
 function classifyClient(rate, count) {
   if (!count || rate == null) return anomalyStatus;
@@ -575,11 +602,11 @@ function historyBlock(key, points) {
 function subText(key, item) {
   return directions.map((direction) => {
     const stats = item.byDirection?.[direction] || { count: 0, passCount: 0 };
-    if (key === 'p1m') {
-      const suffix = stats.passCount ? '平均要刷' + (stats.count / stats.passCount).toFixed(1) + '次通过' : '该方向一次都没成功';
+    if (key === 'p10s' || key === 'p1m') {
+      const suffix = stats.passCount ? '平均刷' + Math.max(0, stats.count / stats.passCount - 1).toFixed(1) + '次' : '该方向一次都没成功';
       return '<div class="subLine">' + direction + ' ' + stats.passCount + '/' + stats.count + ' ' + suffix + '</div>';
     }
-    const suffix = stats.rate ? '平均要刷' + (1 / stats.rate).toFixed(1) + '次通过' : '该方向一次都没成功';
+    const suffix = stats.rate ? '平均刷' + Math.max(0, 1 / stats.rate - 1).toFixed(1) + '次' : '该方向一次都没成功';
     return '<div class="subLine">' + direction + ' ' + fmtPct(stats.rate) + ' ' + suffix + '</div>';
   }).join('');
 }
@@ -694,15 +721,18 @@ async function load() {
   document.getElementById('hourTrend').innerHTML = hourlyTrend(data.history.p1h || []);
   bindTrendTooltip();
 }
-function msUntilNextMinute(offsetMs = 0) {
-  const now = Date.now();
-  return Math.floor(now / 60000) * 60000 + 60000 + offsetMs - now;
-}
+const AUTO_REFRESH_INTERVAL_MS = 10_000;
+const AUTO_REFRESH_DURATION_MS = 20 * 60_000;
+const autoRefreshDeadline = Date.now() + AUTO_REFRESH_DURATION_MS;
 function scheduleLoad() {
+  if (Date.now() + AUTO_REFRESH_INTERVAL_MS > autoRefreshDeadline) return;
   setTimeout(async () => {
-    await load();
-    scheduleLoad();
-  }, Math.max(0, msUntilNextMinute(3000)));
+    try {
+      await load();
+    } finally {
+      scheduleLoad();
+    }
+  }, AUTO_REFRESH_INTERVAL_MS);
 }
 load();
 scheduleLoad();
