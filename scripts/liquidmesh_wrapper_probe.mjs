@@ -475,8 +475,8 @@ async function main() {
   const format = getArg("format", "compact");
   const stdoutMode = getArg("stdout", samples === 0 ? "summary" : "sample");
   const threshold = Number(getArg("threshold", "155000"));
-  const targetInnerBytes = Number(getArg("target-inner", "1380"));
-  if (!Number.isFinite(targetInnerBytes)) throw new Error("Missing target inner bytes. Pass --target-inner 1380.");
+  const targetInnerBytes = Number(getArg("target-inner", "1412"));
+  if (!Number.isFinite(targetInnerBytes)) throw new Error("Missing target inner bytes. Pass --target-inner 1412.");
   const slippageBps = Number(getArg("slippage-bps", "1"));
   const dexes = getArg("dexes", "");
   const excludeDexes = getArg("exclude-dexes", "uniswap_v4,pancakeswap_v4,lista_stable,fluid_t1,nomiswap_stable");

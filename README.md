@@ -110,7 +110,7 @@ GET /api/status
 Each sample is reduced to a boolean:
 
 ```text
-PASS  = V4 is excluded and the quote uses one V3 dex, 1380-byte inner calldata,
+PASS  = V4 is excluded and the quote uses one V3 dex, 1412-byte inner calldata,
         and a 155000 LiquidMesh gas estimate
 BLOCK = route/gas/calldata does not match the target path or the request fails
 ```
