@@ -21,7 +21,7 @@ const WINDOWS = [
 const STATUS_RULES = [
   { state: "super-green", title: "超级流畅", color: "#10b981", minRate: 0.70, exclusive: true },
   { state: "green", title: "流畅", color: "#10b981", minRate: 0.50 },
-  { state: "yellow", title: "可刷", color: "#2563EB", minRate: 0.25 },
+  { state: "yellow", title: "可刷", color: "#3B6FCB", minRate: 0.25 },
   { state: "orange", title: "卡顿", color: "#f97316", minRate: 0.10 },
   { state: "red", title: "卡飞了", color: "#f43f5e", minRate: 0 },
 ];
@@ -520,7 +520,7 @@ const html = String.raw`<!doctype html>
       --line: #e5e7eb;
       --panel: #ffffff;
       --green: #10b981;
-      --yellow: #B7791F;
+      --yellow: #3B6FCB;
       --orange: #f97316;
       --red: #f43f5e;
       --empty: #e5e7eb;
@@ -531,11 +531,12 @@ const html = String.raw`<!doctype html>
     header { margin-bottom: 18px; }
     h1 { margin: 0; font-size: 28px; line-height: 1.15; }
     .status { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 14px; margin-top: 8px; white-space: nowrap; }
-    .dot { width: 12px; height: 12px; border-radius: 999px; background: var(--empty); }
     .metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
     .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
     .label { color: var(--muted); font-size: 13px; margin-bottom: 8px; }
-    .value { font-size: 30px; line-height: 1.08; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .value { display: flex; align-items: baseline; gap: 8px; min-width: 0; line-height: 1.08; color: var(--fg); white-space: nowrap; }
+    .valueRate { font-size: 30px; font-variant-numeric: tabular-nums; }
+    .valueStatus { font-size: 20px; font-weight: 600; }
     .sub { color: var(--muted); font-size: 12px; margin-top: 8px; font-variant-numeric: tabular-nums; }
     .subLine { line-height: 1.45; }
     .historyTitle { color: var(--soft); font-size: 11px; font-weight: 700; letter-spacing: .12em; margin-top: 14px; text-transform: uppercase; }
@@ -564,7 +565,8 @@ const html = String.raw`<!doctype html>
       .status { align-items: flex-start; flex-wrap: wrap; gap: 6px 10px; font-size: 13px; }
       .metrics { gap: 10px; }
       .card { padding: 12px; }
-      .value { font-size: 30px; }
+      .valueRate { font-size: 30px; }
+      .valueStatus { font-size: 18px; }
       .bars { gap: 1px; }
       .bar { height: 22px; }
       .trend { padding: 12px; }
@@ -578,7 +580,7 @@ const html = String.raw`<!doctype html>
 <main>
   <header>
     <h1>LiquidMesh Probe Monitor</h1>
-    <div class="status"><span class="dot" id="statusDot"></span><strong id="statusText">-</strong><span id="updatedText"></span><span id="estimateText"></span></div>
+    <div class="status"><span id="updatedText"></span><span id="estimateText"></span></div>
   </header>
 
   <section class="metrics" id="metrics"></section>
@@ -647,14 +649,12 @@ function subText(key, item) {
 }
 function metricCard(key, item, points) {
   const status = directionStatus(item);
-  return '<div class="card"><div class="label">' + item.label + '</div><div class="value" style="color:' + status.color + '">' + fmtPct(item.rate) + ' (' + status.title + ')</div><div class="sub">' + subText(key, item) + '</div>' + historyBlock(key, points) + '</div>';
+  return '<div class="card"><div class="label">' + item.label + '</div><div class="value" style="color:' + status.color + '"><span class="valueRate">' + fmtPct(item.rate) + '</span><span class="valueStatus">' + status.title + '</span></div><div class="sub">' + subText(key, item) + '</div>' + historyBlock(key, points) + '</div>';
 }
-function hourlyTrend(points) {
+function hourlyTrend(points, width, height) {
   const valid = points.filter((point) => point.count && point.rate != null);
   const latest = valid[valid.length - 1];
-  const width = 600;
-  const height = 205;
-  const padX = 34;
+  const padX = Math.max(34, Math.round(width * 0.05));
   const padY = 16;
   const bottomPad = 32;
   const chartW = width - padX * 2;
@@ -748,12 +748,14 @@ async function load() {
   statusRules = data.statusRules || [];
   anomalyStatus = data.anomalyStatus || anomalyStatus;
   fuseStatus = data.fuseStatus || fuseStatus;
-  document.getElementById('statusText').textContent = data.status.title;
-  document.getElementById('statusDot').style.background = data.status.color;
   document.getElementById('updatedText').textContent = fmtMinute(data.windows.p1m.referenceTs);
   document.getElementById('estimateText').innerHTML = estimateHtml(data.brushEstimate, data.status.color);
   document.getElementById('metrics').innerHTML = windows.map((key) => metricCard(key, data.windows[key], data.history[key])).join('');
-  document.getElementById('hourTrend').innerHTML = hourlyTrend(data.history.p1h || []);
+  const trend = document.getElementById('hourTrend');
+  const trendPadding = window.innerWidth <= 560 ? 24 : 28;
+  const trendWidth = Math.max(260, Math.round(trend.clientWidth - trendPadding));
+  const trendHeight = window.innerWidth <= 560 ? 170 : window.innerWidth <= 760 ? 190 : 220;
+  trend.innerHTML = hourlyTrend(data.history.p1h || [], trendWidth, trendHeight);
   bindTrendTooltip();
 }
 const AUTO_REFRESH_INTERVAL_MS = 10_000;
