@@ -153,11 +153,11 @@ For each window:
 Status thresholds:
 
 ```text
-> 75%  super smooth
->=55%  smooth
->=35%  brushable
->=15%  congested
->0% and <15%  severely congested
+> 70%  super smooth
+>=50%  smooth
+>=25%  brushable
+>=20%  congested
+>0% and <20%  severely congested
 0%  fuse triggered
 ```
 
