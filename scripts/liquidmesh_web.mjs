@@ -595,8 +595,14 @@ const fmtPct = (rate) => rate == null ? '-' : Math.round(rate * 100) + '%';
 const fmtTime = (ts) => new Date(ts).toLocaleString('zh-CN', { hour12: false });
 const fmtMinute = (ts) => new Date(ts).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
 const fmtHour = (ts) => new Date(ts).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
-const fmtAxisHour = (ts) => new Date(ts).toLocaleString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
-const fmtAxisDate = (ts) => new Date(ts).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour12: false });
+const fmtAxisHour = (ts) => {
+  const date = new Date(ts);
+  return String(date.getHours()).padStart(2, '0') + ':' + String(date.getMinutes()).padStart(2, '0');
+};
+const fmtAxisDate = (ts) => {
+  const date = new Date(ts);
+  return String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0');
+};
 const fmtShortTime = (ts) => new Date(ts).toLocaleString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
 let statusRules = [];
 let anomalyStatus = { state: 'anomaly', title: '无数据', color: '#e5e7eb' };
@@ -656,7 +662,7 @@ function hourlyTrend(points, width, height) {
   const latest = valid[valid.length - 1];
   const padX = Math.max(34, Math.round(width * 0.05));
   const padY = 16;
-  const bottomPad = 32;
+  const bottomPad = 42;
   const chartW = width - padX * 2;
   const chartH = height - padY - bottomPad;
   const xFor = (index) => padX + chartW * index / Math.max(points.length - 1, 1);
@@ -690,18 +696,29 @@ function hourlyTrend(points, width, height) {
     const y = yFor(rate).toFixed(1);
     return '<line x1="' + padX + '" y1="' + y + '" x2="' + (width - padX) + '" y2="' + y + '" stroke="#e5e7eb" stroke-width="1" /><text x="4" y="' + (Number(y) + 4) + '" fill="#9ca3af" font-size="10">' + Math.round(rate * 100) + '%</text>';
   }).join('');
-  const tickIndexes = [0, 12, 24, 36, 48, 59].filter((index) => index < points.length);
+  const tickStep = width <= 520 ? 12 : 6;
+  const tickIndexes = points.map((point, index) => ({ point, index }))
+    .filter(({ point, index }) => new Date(point.ts).getHours() % tickStep === 0 || index === points.length - 1)
+    .map(({ index }) => index);
   const axisY = padY + chartH;
+  const verticalGrid = tickIndexes.map((index) => {
+    const x = xFor(index).toFixed(1);
+    return '<line x1="' + x + '" y1="' + padY + '" x2="' + x + '" y2="' + axisY.toFixed(1) + '" stroke="#eef0f3" stroke-dasharray="3 4" />';
+  }).join('');
   const ticks = tickIndexes.map((index) => {
     const point = points[index];
     const x = xFor(index);
-    const hourLabel = point ? fmtAxisHour(point.ts) : '';
-    const label = hourLabel === '00:00' && point ? fmtAxisDate(point.ts) + ' 00:00' : hourLabel;
-    return '<line x1="' + x.toFixed(1) + '" y1="' + axisY.toFixed(1) + '" x2="' + x.toFixed(1) + '" y2="' + (axisY + 5).toFixed(1) + '" stroke="#9ca3af" stroke-width="1" />'
-      + '<text x="' + x.toFixed(1) + '" y="' + (axisY + 19).toFixed(1) + '" fill="#9ca3af" font-size="10" text-anchor="middle">' + label + '</text>';
+    const anchor = index === 0 ? 'start' : index === points.length - 1 ? 'end' : 'middle';
+    const hourLabel = fmtAxisHour(point.ts);
+    const dateLabel = new Date(point.ts).getHours() === 0
+      ? '<tspan x="' + x.toFixed(1) + '" dy="12">' + fmtAxisDate(point.ts) + '</tspan>'
+      : '';
+    return '<text x="' + x.toFixed(1) + '" y="' + (axisY + 14).toFixed(1) + '" fill="#9ca3af" font-size="9" text-anchor="' + anchor + '">'
+      + '<tspan x="' + x.toFixed(1) + '">' + hourLabel + '</tspan>' + dateLabel + '</text>';
   }).join('');
   return '<div class="trendHead"><div class="trendTitle">过去60小时成功率变化</div><div class="trendValue">' + fmtPct(latest?.rate) + '</div></div>'
     + '<svg class="trendSvg" viewBox="0 0 ' + width + ' ' + height + '" role="img" aria-label="过去60小时成功率变化图">'
+    + verticalGrid
     + grid
     + '<line x1="' + padX + '" y1="' + axisY.toFixed(1) + '" x2="' + (width - padX) + '" y2="' + axisY.toFixed(1) + '" stroke="#9ca3af" stroke-width="1" />'
     + ticks
