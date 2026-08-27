@@ -156,8 +156,8 @@ Status thresholds:
 > 70%  super smooth
 >=50%  smooth
 >=25%  brushable
->=20%  congested
->0% and <20%  severely congested
+>=15%  congested
+>0% and <15%  severely congested
 0%  fuse triggered
 ```
 
