@@ -12,6 +12,8 @@ const DEFAULT_PORT = 19988;
 const DEFAULT_HOST = "0.0.0.0";
 const UPDATE_INTERVAL_MS = 10_000;
 const HISTORY_POINTS = 60;
+const PUBLIC_HISTORY_POINTS = 24;
+const PUBLIC_WINDOW_KEYS = ["p1m", "p5m", "p1h"];
 const WINDOWS = [
   { key: "p10s", label: "10秒", ms: 10_000 },
   { key: "p1m", label: "1分钟", ms: 60_000 },
@@ -37,6 +39,9 @@ const ESTIMATE_REFRESH_MS = 1_500;
 const ESTIMATE_MAX_SAMPLE_DISTANCE_MS = 2_500;
 
 let cachedPayload = null;
+let cachedPayloadJson = "{}";
+let cachedPublicPayloadJson = "{}";
+let cachedPublicMinute = null;
 let nextUpdateAt = 0;
 const sampleOffsets = new Map();
 let inMemorySamples = [];
@@ -486,9 +491,33 @@ function buildPayload() {
   };
 }
 
+function buildPublicPayload(payload) {
+  return {
+    generatedAt: payload.generatedAt,
+    referenceTs: payload.referenceTs,
+    statusRules: payload.statusRules,
+    anomalyStatus: payload.anomalyStatus,
+    fuseStatus: payload.fuseStatus,
+    status: payload.status,
+    brushEstimate: payload.brushEstimate,
+    windows: Object.fromEntries(
+      PUBLIC_WINDOW_KEYS.map((key) => [key, payload.windows[key]]),
+    ),
+    history: Object.fromEntries(
+      PUBLIC_WINDOW_KEYS.map((key) => [key, payload.history[key].slice(-PUBLIC_HISTORY_POINTS)]),
+    ),
+  };
+}
+
 function refreshCache() {
   nextUpdateAt = Date.now() + UPDATE_INTERVAL_MS;
   cachedPayload = buildPayload();
+  cachedPayloadJson = JSON.stringify(cachedPayload);
+  const publicMinute = alignTs(cachedPayload.referenceTs, 60_000);
+  if (cachedPublicMinute !== publicMinute) {
+    cachedPublicPayloadJson = JSON.stringify(buildPublicPayload(cachedPayload));
+    cachedPublicMinute = publicMinute;
+  }
   if (verboseLogs) console.log(`cache refreshed ${new Date(cachedPayload.generatedAt).toISOString()}`);
 }
 
@@ -524,14 +553,22 @@ const html = String.raw`<!doctype html>
       --orange: #f97316;
       --red: #f43f5e;
       --empty: #e5e7eb;
+      --history-points: 60;
     }
     * { box-sizing: border-box; }
     body { margin: 0; background: var(--bg); color: var(--fg); font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; letter-spacing: 0; }
     main { max-width: 1180px; margin: 0 auto; padding: 20px; }
     header { margin-bottom: 18px; }
     h1 { margin: 0; font-size: 28px; line-height: 1.15; }
-    .status { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 14px; margin-top: 8px; white-space: nowrap; }
+    .statusRow { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+    .status { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 14px; white-space: nowrap; }
+    .refreshButton { display: none; width: 30px; height: 30px; align-items: center; justify-content: center; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--muted); font: 20px/1 system-ui, sans-serif; cursor: pointer; }
+    .refreshButton:hover { color: var(--fg); border-color: #cbd5e1; }
+    .refreshButton:disabled { cursor: wait; opacity: .45; }
+    body.publicMode { --history-points: 24; }
+    body.publicMode .refreshButton { display: inline-flex; }
     .metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    body.publicMode .metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
     .label { color: var(--muted); font-size: 13px; margin-bottom: 8px; }
     .value { display: flex; align-items: baseline; gap: 8px; min-width: 0; line-height: 1.08; color: var(--fg); white-space: nowrap; }
@@ -540,7 +577,7 @@ const html = String.raw`<!doctype html>
     .sub { color: var(--muted); font-size: 12px; margin-top: 8px; font-variant-numeric: tabular-nums; }
     .subLine { line-height: 1.45; }
     .historyTitle { color: var(--soft); font-size: 11px; font-weight: 700; letter-spacing: .12em; margin-top: 14px; text-transform: uppercase; }
-    .bars { display: grid; grid-template-columns: repeat(60, minmax(2px, 1fr)); gap: 2px; align-items: stretch; margin-top: 7px; min-width: 0; }
+    .bars { display: grid; grid-template-columns: repeat(var(--history-points), minmax(2px, 1fr)); gap: 2px; align-items: stretch; margin-top: 7px; min-width: 0; }
     .bar { height: 30px; border-radius: 2px; background: var(--empty); }
     .axis { display: flex; justify-content: space-between; color: var(--soft); font-size: 10px; font-weight: 700; letter-spacing: .12em; margin-top: 6px; }
     .trend { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px; margin-top: 12px; }
@@ -553,15 +590,19 @@ const html = String.raw`<!doctype html>
     .trendTip strong { display: block; font-size: 13px; margin-bottom: 2px; }
     .hitPoint { cursor: crosshair; touch-action: none; pointer-events: all; }
     .trendHitArea { cursor: crosshair; touch-action: none; pointer-events: all; }
+    @media (max-width: 980px) and (min-width: 761px) {
+      body.publicMode .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
     @media (max-width: 760px) {
       main { padding: 16px; }
-      .metrics { grid-template-columns: 1fr; }
+      .metrics, body.publicMode .metrics { grid-template-columns: 1fr; }
       .bar { height: 24px; }
       .trendSvg { height: 190px; }
     }
     @media (max-width: 560px) {
       main { padding: 14px 12px; }
       h1 { font-size: 22px; }
+      .statusRow { align-items: flex-start; }
       .status { align-items: flex-start; flex-wrap: wrap; gap: 6px 10px; font-size: 13px; }
       .metrics { gap: 10px; }
       .card { padding: 12px; }
@@ -580,7 +621,10 @@ const html = String.raw`<!doctype html>
 <main>
   <header>
     <h1>LiquidMesh Probe Monitor</h1>
-    <div class="status"><span id="updatedText"></span><span id="estimateText"></span></div>
+    <div class="statusRow">
+      <div class="status"><span id="updatedText"></span><span id="estimateText"></span></div>
+      <button class="refreshButton" id="refreshButton" type="button" title="刷新数据" aria-label="刷新数据">↻</button>
+    </div>
   </header>
 
   <section class="metrics" id="metrics"></section>
@@ -588,7 +632,10 @@ const html = String.raw`<!doctype html>
 </main>
 <div class="trendTip" id="trendTip"></div>
 <script>
-const windows = ['p10s', 'p1m', 'p5m', 'p1h'];
+const publicMode = window.location.pathname.startsWith('/liquidmesh/');
+document.body.classList.toggle('publicMode', publicMode);
+const windows = publicMode ? ['p1m', 'p5m', 'p1h'] : ['p10s', 'p1m', 'p5m', 'p1h'];
+const trendHours = publicMode ? 24 : 60;
 const directions = ['USDT->quq', 'quq->USDT'];
 const windowNames = { p10s: '10 SEC', p1m: '1 MIN', p5m: '5 MIN', p1h: '1 HOUR' };
 const fmtPct = (rate) => rate == null ? '-' : Math.round(rate * 100) + '%';
@@ -716,8 +763,8 @@ function hourlyTrend(points, width, height) {
     return '<text x="' + x.toFixed(1) + '" y="' + (axisY + 14).toFixed(1) + '" fill="#9ca3af" font-size="9" text-anchor="' + anchor + '">'
       + '<tspan x="' + x.toFixed(1) + '">' + hourLabel + '</tspan>' + dateLabel + '</text>';
   }).join('');
-  return '<div class="trendHead"><div class="trendTitle">过去60小时成功率变化</div><div class="trendValue">' + fmtPct(latest?.rate) + '</div></div>'
-    + '<svg class="trendSvg" viewBox="0 0 ' + width + ' ' + height + '" role="img" aria-label="过去60小时成功率变化图">'
+  return '<div class="trendHead"><div class="trendTitle">过去' + trendHours + '小时成功率变化</div><div class="trendValue">' + fmtPct(latest?.rate) + '</div></div>'
+    + '<svg class="trendSvg" viewBox="0 0 ' + width + ' ' + height + '" role="img" aria-label="过去' + trendHours + '小时成功率变化图">'
     + verticalGrid
     + grid
     + '<line x1="' + padX + '" y1="' + axisY.toFixed(1) + '" x2="' + (width - padX) + '" y2="' + axisY.toFixed(1) + '" stroke="#9ca3af" stroke-width="1" />'
@@ -759,36 +806,48 @@ function bindTrendTooltip() {
   }
   window.addEventListener('scroll', hide, { passive: true });
 }
-async function load() {
-  const res = await fetch('api/status', { cache: 'no-store' });
-  const data = await res.json();
-  statusRules = data.statusRules || [];
-  anomalyStatus = data.anomalyStatus || anomalyStatus;
-  fuseStatus = data.fuseStatus || fuseStatus;
-  document.getElementById('updatedText').textContent = fmtMinute(data.windows.p1m.referenceTs);
-  document.getElementById('estimateText').innerHTML = estimateHtml(data.brushEstimate, data.status.color);
-  document.getElementById('metrics').innerHTML = windows.map((key) => metricCard(key, data.windows[key], data.history[key])).join('');
-  const trend = document.getElementById('hourTrend');
-  const trendPadding = window.innerWidth <= 560 ? 24 : 28;
-  const trendWidth = Math.max(260, Math.round(trend.clientWidth - trendPadding));
-  const trendHeight = window.innerWidth <= 560 ? 170 : window.innerWidth <= 760 ? 190 : 220;
-  trend.innerHTML = hourlyTrend(data.history.p1h || [], trendWidth, trendHeight);
-  bindTrendTooltip();
+let loadInFlight = false;
+async function load(force = false) {
+  if (loadInFlight) return;
+  loadInFlight = true;
+  const refreshButton = document.getElementById('refreshButton');
+  refreshButton.disabled = true;
+  try {
+    const res = await fetch('api/status', { cache: publicMode ? (force ? 'reload' : 'default') : 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    statusRules = data.statusRules || [];
+    anomalyStatus = data.anomalyStatus || anomalyStatus;
+    fuseStatus = data.fuseStatus || fuseStatus;
+    document.getElementById('updatedText').textContent = fmtMinute(data.windows.p1m.referenceTs);
+    document.getElementById('estimateText').innerHTML = estimateHtml(data.brushEstimate, data.status.color);
+    document.getElementById('metrics').innerHTML = windows.map((key) => metricCard(key, data.windows[key], data.history[key])).join('');
+    const trend = document.getElementById('hourTrend');
+    const trendPadding = window.innerWidth <= 560 ? 24 : 28;
+    const trendWidth = Math.max(260, Math.round(trend.clientWidth - trendPadding));
+    const trendHeight = window.innerWidth <= 560 ? 170 : window.innerWidth <= 760 ? 190 : 220;
+    trend.innerHTML = hourlyTrend(data.history.p1h || [], trendWidth, trendHeight);
+    bindTrendTooltip();
+  } finally {
+    refreshButton.disabled = false;
+    loadInFlight = false;
+  }
 }
-const AUTO_REFRESH_INTERVAL_MS = 10_000;
-const AUTO_REFRESH_DURATION_MS = 20 * 60_000;
+const AUTO_REFRESH_INTERVAL_MS = publicMode ? 60_000 : 10_000;
+const AUTO_REFRESH_DURATION_MS = (publicMode ? 5 : 20) * 60_000;
 const autoRefreshDeadline = Date.now() + AUTO_REFRESH_DURATION_MS;
 function scheduleLoad() {
   if (Date.now() + AUTO_REFRESH_INTERVAL_MS > autoRefreshDeadline) return;
   setTimeout(async () => {
     try {
-      await load();
+      if (!document.hidden) await load();
     } finally {
       scheduleLoad();
     }
   }, AUTO_REFRESH_INTERVAL_MS);
 }
-load();
+document.getElementById('refreshButton').addEventListener('click', () => load(true));
+load().catch(() => {});
 scheduleLoad();
 </script>
 </body>
@@ -798,18 +857,33 @@ refreshCache();
 scheduleCacheRefresh();
 
 const server = createServer((req, res) => {
-  if (req.url === "/api/status") {
+  const path = req.url?.split("?", 1)[0] || "/";
+  if (!['GET', 'HEAD'].includes(req.method || '')) {
+    res.writeHead(405, { Allow: "GET, HEAD", "Content-Type": "text/plain; charset=utf-8" });
+    res.end("Method Not Allowed");
+    return;
+  }
+  if (["/api/status", "/api/public-status", "/liquidmesh/api/status", "/liquidmesh_probe/api/status"].includes(path)) {
     try {
-      res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
-      res.end(JSON.stringify(cachedPayload));
+      const isPublic = ["/api/public-status", "/liquidmesh/api/status"].includes(path);
+      res.writeHead(200, {
+        "Content-Type": "application/json; charset=utf-8",
+        "Cache-Control": isPublic ? "public, max-age=60, stale-while-revalidate=120" : "no-store",
+      });
+      res.end(req.method === 'HEAD' ? undefined : isPublic ? cachedPublicPayloadJson : cachedPayloadJson);
     } catch (error) {
       res.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
       res.end(JSON.stringify({ error: error.message }));
     }
     return;
   }
+  if (path.startsWith("/api/")) {
+    res.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
+    res.end(req.method === 'HEAD' ? undefined : JSON.stringify({ error: "not found" }));
+    return;
+  }
   res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
-  res.end(html);
+  res.end(req.method === 'HEAD' ? undefined : html);
 });
 
 const port = Number(getArg("port", String(DEFAULT_PORT)));

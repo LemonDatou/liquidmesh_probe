@@ -103,6 +103,14 @@ API:
 
 ```text
 GET /api/status
+GET /api/public-status
+```
+
+Production exposes two views from the same web process:
+
+```text
+/liquidmesh/        public compact dashboard
+/liquidmesh_probe/  full internal dashboard
 ```
 
 ## Pass Criteria
@@ -178,8 +186,14 @@ sample lookup: nearest sample in the same direction
 The 10-second window is recomputed every 10 seconds. Existing minute-based
 windows and the time estimate keep their original once-per-minute refresh.
 
-The browser fetches the cached dashboard payload every 10 seconds and stops
-automatic fetching after 20 minutes. Reload the page to begin another session.
+The full dashboard fetches its cached payload every 10 seconds and stops
+automatic fetching after 20 minutes.
+
+The public dashboard omits the 10-second card, returns only 24 history points,
+shows a 24-hour trend, and fetches once per minute for at most 5 minutes. Its
+refresh button performs a single fetch without restarting automatic refresh.
+Nginx serves the public page and public API through a shared cache so concurrent
+visitors do not create proportional load on the Node process.
 
 ## Data Retention
 
