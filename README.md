@@ -190,8 +190,9 @@ The full dashboard fetches its cached payload every 10 seconds and stops
 automatic fetching after 20 minutes.
 
 The public dashboard omits the 10-second card, returns only 24 history points,
-shows a 24-hour trend, and fetches once per minute for at most 5 minutes. Its
-refresh button performs a single fetch without restarting automatic refresh.
+shows a 24-hour trend, and fetches once per minute for at most 10 minutes. Each
+browser's schedule starts when that page is opened. Reload the page to start a
+new automatic refresh period after it expires.
 Nginx serves the public page and public API through a shared cache so concurrent
 visitors do not create proportional load on the Node process.
 

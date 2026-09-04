@@ -560,13 +560,8 @@ const html = String.raw`<!doctype html>
     main { max-width: 1180px; margin: 0 auto; padding: 20px; }
     header { margin-bottom: 18px; }
     h1 { margin: 0; font-size: 28px; line-height: 1.15; }
-    .statusRow { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
-    .status { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 14px; white-space: nowrap; }
-    .refreshButton { display: none; width: 30px; height: 30px; align-items: center; justify-content: center; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--muted); font: 20px/1 system-ui, sans-serif; cursor: pointer; }
-    .refreshButton:hover { color: var(--fg); border-color: #cbd5e1; }
-    .refreshButton:disabled { cursor: wait; opacity: .45; }
+    .status { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 14px; margin-top: 8px; white-space: nowrap; }
     body.publicMode { --history-points: 24; }
-    body.publicMode .refreshButton { display: inline-flex; }
     .metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
     body.publicMode .metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
@@ -602,7 +597,6 @@ const html = String.raw`<!doctype html>
     @media (max-width: 560px) {
       main { padding: 14px 12px; }
       h1 { font-size: 22px; }
-      .statusRow { align-items: flex-start; }
       .status { align-items: flex-start; flex-wrap: wrap; gap: 6px 10px; font-size: 13px; }
       .metrics { gap: 10px; }
       .card { padding: 12px; }
@@ -621,10 +615,7 @@ const html = String.raw`<!doctype html>
 <main>
   <header>
     <h1>LiquidMesh Probe Monitor</h1>
-    <div class="statusRow">
-      <div class="status"><span id="updatedText"></span><span id="estimateText"></span></div>
-      <button class="refreshButton" id="refreshButton" type="button" title="刷新数据" aria-label="刷新数据">↻</button>
-    </div>
+    <div class="status"><span id="updatedText"></span><span id="estimateText"></span></div>
   </header>
 
   <section class="metrics" id="metrics"></section>
@@ -807,13 +798,11 @@ function bindTrendTooltip() {
   window.addEventListener('scroll', hide, { passive: true });
 }
 let loadInFlight = false;
-async function load(force = false) {
+async function load() {
   if (loadInFlight) return;
   loadInFlight = true;
-  const refreshButton = document.getElementById('refreshButton');
-  refreshButton.disabled = true;
   try {
-    const res = await fetch('api/status', { cache: publicMode ? (force ? 'reload' : 'default') : 'no-store' });
+    const res = await fetch('api/status', { cache: publicMode ? 'default' : 'no-store' });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
     statusRules = data.statusRules || [];
@@ -829,24 +818,27 @@ async function load(force = false) {
     trend.innerHTML = hourlyTrend(data.history.p1h || [], trendWidth, trendHeight);
     bindTrendTooltip();
   } finally {
-    refreshButton.disabled = false;
     loadInFlight = false;
   }
 }
 const AUTO_REFRESH_INTERVAL_MS = publicMode ? 60_000 : 10_000;
-const AUTO_REFRESH_DURATION_MS = (publicMode ? 5 : 20) * 60_000;
-const autoRefreshDeadline = Date.now() + AUTO_REFRESH_DURATION_MS;
+const AUTO_REFRESH_DURATION_MS = (publicMode ? 10 : 20) * 60_000;
+const autoRefreshStartedAt = Date.now();
+const autoRefreshDeadline = autoRefreshStartedAt + AUTO_REFRESH_DURATION_MS;
+let autoRefreshIndex = 1;
 function scheduleLoad() {
-  if (Date.now() + AUTO_REFRESH_INTERVAL_MS > autoRefreshDeadline) return;
+  const targetAt = autoRefreshStartedAt + autoRefreshIndex * AUTO_REFRESH_INTERVAL_MS;
+  if (targetAt > autoRefreshDeadline) return;
   setTimeout(async () => {
+    if (Date.now() > autoRefreshDeadline + 1_000) return;
     try {
       if (!document.hidden) await load();
     } finally {
+      autoRefreshIndex += 1;
       scheduleLoad();
     }
-  }, AUTO_REFRESH_INTERVAL_MS);
+  }, Math.max(0, targetAt - Date.now()));
 }
-document.getElementById('refreshButton').addEventListener('click', () => load(true));
 load().catch(() => {});
 scheduleLoad();
 </script>
