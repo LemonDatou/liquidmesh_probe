@@ -194,7 +194,9 @@ shows a 24-hour trend, and fetches once per minute for at most 10 minutes. Each
 browser's schedule starts when that page is opened. Reload the page to start a
 new automatic refresh period after it expires.
 Nginx serves the public page and public API through a shared cache so concurrent
-visitors do not create proportional load on the Node process.
+visitors do not create proportional load on the Node process. API responses are
+not cached by browsers, preventing stale shared-cache responses from being held
+for another refresh interval.
 
 ## Data Retention
 

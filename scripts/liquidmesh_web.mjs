@@ -802,7 +802,7 @@ async function load() {
   if (loadInFlight) return;
   loadInFlight = true;
   try {
-    const res = await fetch('api/status', { cache: publicMode ? 'default' : 'no-store' });
+    const res = await fetch('api/status', { cache: 'no-store' });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
     statusRules = data.statusRules || [];
